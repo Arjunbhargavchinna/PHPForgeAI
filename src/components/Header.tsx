@@ -1,11 +1,14 @@
 import React from 'react';
-import { Menu, Zap, Download, Play } from 'lucide-react';
+import { Menu, Zap, Download, Play, Trash2 } from 'lucide-react';
+import { useProject } from '../context/ProjectContext';
 
 interface HeaderProps {
   onToggleSidebar: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
+  const { exportProject, clearProject, files, isGenerating } = useProject();
+
   return (
     <header className="bg-gray-800 border-b border-gray-700 px-4 py-3 flex items-center justify-between">
       <div className="flex items-center space-x-4">
@@ -26,11 +29,19 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
       </div>
       
       <div className="flex items-center space-x-3">
-        <button className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg transition-colors flex items-center space-x-2">
-          <Play size={16} />
-          <span>Generate</span>
+        <button 
+          onClick={clearProject}
+          disabled={files.length === 0 || isGenerating}
+          className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg transition-colors flex items-center space-x-2"
+        >
+          <Trash2 size={16} />
+          <span>Clear</span>
         </button>
-        <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors flex items-center space-x-2">
+        <button 
+          onClick={exportProject}
+          disabled={files.length === 0 || isGenerating}
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg transition-colors flex items-center space-x-2"
+        >
           <Download size={16} />
           <span>Export</span>
         </button>

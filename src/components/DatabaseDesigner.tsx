@@ -16,33 +16,17 @@ interface DatabaseTable {
 }
 
 export const DatabaseDesigner: React.FC = () => {
-  const { addDatabaseTable } = useProject();
-  const [tables, setTables] = useState<DatabaseTable[]>([
-    {
-      name: 'users',
-      fields: [
-        { name: 'id', type: 'INT', nullable: false, primary: true, autoIncrement: true },
-        { name: 'email', type: 'VARCHAR(255)', nullable: false, primary: false, autoIncrement: false },
-        { name: 'password', type: 'VARCHAR(255)', nullable: false, primary: false, autoIncrement: false },
-        { name: 'name', type: 'VARCHAR(100)', nullable: false, primary: false, autoIncrement: false },
-        { name: 'created_at', type: 'TIMESTAMP', nullable: false, primary: false, autoIncrement: false }
-      ]
-    },
-    {
-      name: 'posts',
-      fields: [
-        { name: 'id', type: 'INT', nullable: false, primary: true, autoIncrement: true },
-        { name: 'title', type: 'VARCHAR(255)', nullable: false, primary: false, autoIncrement: false },
-        { name: 'content', type: 'TEXT', nullable: false, primary: false, autoIncrement: false },
-        { name: 'user_id', type: 'INT', nullable: false, primary: false, autoIncrement: false },
-        { name: 'created_at', type: 'TIMESTAMP', nullable: false, primary: false, autoIncrement: false }
-      ]
-    }
-  ]);
+  const { addDatabaseTable, databaseTables } = useProject();
+  const [tables, setTables] = useState<DatabaseTable[]>(databaseTables);
 
   const [showAddTable, setShowAddTable] = useState(false);
   const [newTableName, setNewTableName] = useState('');
   const [editingTable, setEditingTable] = useState<string | null>(null);
+
+  // Update local state when context changes
+  React.useEffect(() => {
+    setTables(databaseTables);
+  }, [databaseTables]);
 
   const addTable = () => {
     if (newTableName.trim()) {
