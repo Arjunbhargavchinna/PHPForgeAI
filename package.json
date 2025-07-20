@@ -10,10 +10,15 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.56.0",
+    "@google/generative-ai": "^0.24.1",
     "@monaco-editor/react": "^4.7.0",
+    "@types/file-saver": "^2.0.7",
+    "cohere-ai": "^7.17.1",
     "file-saver": "^2.0.5",
     "jszip": "^3.10.1",
     "lucide-react": "^0.344.0",
+    "openai": "^5.10.1",
     "prismjs": "^1.30.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
