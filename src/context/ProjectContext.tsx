@@ -120,11 +120,18 @@ export const ProjectProvider: React.FC<{ children: ReactNode }> = ({ children })
       
     } catch (error) {
       console.error('Code generation error:', error);
-      setGenerationProgress('Generation failed. Please try again.');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      if (errorMessage.includes('402') || errorMessage.includes('Payment Required')) {
+        setGenerationProgress('API credits exhausted. Please check your OpenRouter account billing or try a different AI provider.');
+      } else if (errorMessage.includes('not configured')) {
+        setGenerationProgress('AI provider not configured. Please add your API key to continue.');
+      } else {
+        setGenerationProgress('Generation failed. Please try again or switch to a different AI provider.');
+      }
       
       setTimeout(() => {
         setGenerationProgress('');
-      }, 3000);
+      }, 5000);
     } finally {
       setIsGenerating(false);
     }

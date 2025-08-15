@@ -85,6 +85,9 @@ Make the code production-ready with error handling, logging, and proper architec
       });
 
       if (!response.ok) {
+        if (response.status === 402) {
+          throw new Error(`OpenRouter API error: 402 Payment Required - Your OpenRouter account has insufficient credits or requires payment. Please check your account at https://openrouter.ai/account`);
+        }
         throw new Error(`OpenRouter API error: ${response.status} ${response.statusText}`);
       }
 
