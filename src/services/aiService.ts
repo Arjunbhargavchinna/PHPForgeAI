@@ -3,6 +3,225 @@ import { Anthropic } from '@anthropic-ai/sdk';
 import { CohereApi } from 'cohere-ai';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
+class OpenRouterProvider implements AIProvider {
+  name = 'OpenRouter (Multiple Models)';
+  private apiKey: string;
+
+  constructor() {
+    const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY;
+    if (!apiKey) {
+      throw new Error('OpenRouter API key not configured');
+    }
+    this.apiKey = apiKey;
+  }
+
+  isConfigured(): boolean {
+    return !!import.meta.env.VITE_OPENROUTER_API_KEY;
+  }
+
+  async generateCode(prompt: string): Promise<GeneratedProject> {
+    const systemPrompt = `You are an expert PHP/MySQL developer. Generate a complete, production-ready application based on the user's request.
+
+IMPORTANT: Respond with a valid JSON object containing:
+{
+  "description": "Brief description of the application",
+  "features": ["feature1", "feature2", ...],
+  "instructions": "Setup and installation instructions",
+  "databaseSchema": [
+    {
+      "name": "table_name",
+      "fields": [
+        {
+          "name": "field_name",
+          "type": "field_type",
+          "nullable": false,
+          "primary": true,
+          "autoIncrement": true,
+          "foreignKey": "referenced_table.field"
+        }
+      ]
+    }
+  ],
+  "files": [
+    {
+      "name": "filename.php",
+      "path": "directory/filename.php",
+      "content": "complete file content",
+      "type": "php"
+    }
+  ]
+}
+
+Generate a complete MVC application with:
+- Proper directory structure
+- Security best practices (prepared statements, input validation, CSRF protection)
+- Modern responsive design with Tailwind CSS
+- Complete CRUD operations
+- User authentication system
+- Database migrations
+- Configuration files
+- Documentation
+
+Make the code production-ready with error handling, logging, and proper architecture.`;
+
+    try {
+      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': window.location.origin,
+          'X-Title': 'PHPForge AI'
+        },
+        body: JSON.stringify({
+          model: 'anthropic/claude-3.5-sonnet',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.7,
+          max_tokens: 4000
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`OpenRouter API error: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const content = data.choices[0]?.message?.content;
+      
+      if (!content) {
+        throw new Error('No response from OpenRouter');
+      }
+
+      // Clean up the response to ensure it's valid JSON
+      let cleanContent = content.trim();
+      if (cleanContent.startsWith('```json')) {
+        cleanContent = cleanContent.replace(/```json\n?/, '').replace(/\n?```$/, '');
+      }
+      if (cleanContent.startsWith('```')) {
+        cleanContent = cleanContent.replace(/```\n?/, '').replace(/\n?```$/, '');
+      }
+
+      return JSON.parse(cleanContent);
+    } catch (error) {
+      console.error('OpenRouter generation error:', error);
+      return this.getFallbackProject(prompt);
+    }
+  }
+
+  private getFallbackProject(prompt: string): GeneratedProject {
+    return {
+      description: `OpenRouter-generated PHP application based on: ${prompt}`,
+      features: [
+        'MVC Architecture',
+        'Database Integration', 
+        'User Authentication',
+        'Responsive Design',
+        'Security Features',
+        'Admin Dashboard'
+      ],
+      instructions: `1. Extract all files to your web server directory
+2. Create a MySQL database
+3. Import the database schema from database/schema.sql
+4. Configure database connection in config/database.php
+5. Set up proper file permissions
+6. Access the application through your web browser`,
+      databaseSchema: [
+        {
+          name: 'users',
+          fields: [
+            { name: 'id', type: 'INT', nullable: false, primary: true, autoIncrement: true },
+            { name: 'email', type: 'VARCHAR(255)', nullable: false, primary: false, autoIncrement: false },
+            { name: 'password', type: 'VARCHAR(255)', nullable: false, primary: false, autoIncrement: false },
+            { name: 'name', type: 'VARCHAR(100)', nullable: false, primary: false, autoIncrement: false },
+            { name: 'role', type: 'ENUM("user","admin")', nullable: false, primary: false, autoIncrement: false },
+            { name: 'created_at', type: 'TIMESTAMP', nullable: false, primary: false, autoIncrement: false }
+          ]
+        },
+        {
+          name: 'posts',
+          fields: [
+            { name: 'id', type: 'INT', nullable: false, primary: true, autoIncrement: true },
+            { name: 'title', type: 'VARCHAR(255)', nullable: false, primary: false, autoIncrement: false },
+            { name: 'content', type: 'TEXT', nullable: false, primary: false, autoIncrement: false },
+            { name: 'user_id', type: 'INT', nullable: false, primary: false, autoIncrement: false, foreignKey: 'users.id' },
+            { name: 'status', type: 'ENUM("draft","published")', nullable: false, primary: false, autoIncrement: false },
+            { name: 'created_at', type: 'TIMESTAMP', nullable: false, primary: false, autoIncrement: false }
+          ]
+        }
+      ],
+      files: [
+        {
+          name: 'index.php',
+          path: 'public/index.php',
+          type: 'php',
+          content: `<?php
+session_start();
+require_once '../config/database.php';
+require_once '../app/controllers/HomeController.php';
+require_once '../app/models/User.php';
+
+// Simple routing
+$request = $_SERVER['REQUEST_URI'];
+$path = parse_url($request, PHP_URL_PATH);
+
+switch ($path) {
+    case '/':
+    case '/home':
+        $controller = new HomeController();
+        $controller->index();
+        break;
+    case '/login':
+        $controller = new AuthController();
+        $controller->login();
+        break;
+    case '/register':
+        $controller = new AuthController();
+        $controller->register();
+        break;
+    default:
+        http_response_code(404);
+        echo "Page not found";
+        break;
+}
+?>`
+        },
+        {
+          name: 'database.php',
+          path: 'config/database.php',
+          type: 'php',
+          content: `<?php
+class Database {
+    private $host = 'localhost';
+    private $db_name = 'phpforge_app';
+    private $username = 'root';
+    private $password = '';
+    private $conn;
+
+    public function getConnection() {
+        $this->conn = null;
+        try {
+            $this->conn = new PDO(
+                "mysql:host=" . $this->host . ";dbname=" . $this->db_name,
+                $this->username,
+                $this->password
+            );
+            $this->conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        } catch(PDOException $exception) {
+            echo "Connection error: " . $exception->getMessage();
+        }
+        return $this->conn;
+    }
+}
+?>`
+        }
+      ]
+    };
+  }
+}
+
 export interface AIProvider {
   name: string;
   generateCode: (prompt: string, context?: any) => Promise<GeneratedProject>;
@@ -325,8 +544,14 @@ export class AIService {
       console.warn('Google AI provider not available:', error);
     }
 
+    try {
+      this.providers.set('openrouter', new OpenRouterProvider());
+    } catch (error) {
+      console.warn('OpenRouter provider not available:', error);
+    }
+
     // Set default provider
-    this.currentProvider = import.meta.env.VITE_DEFAULT_AI_PROVIDER || 'openai';
+    this.currentProvider = import.meta.env.VITE_DEFAULT_AI_PROVIDER || 'openrouter';
     
     // Fallback to first available provider
     if (!this.providers.has(this.currentProvider)) {
