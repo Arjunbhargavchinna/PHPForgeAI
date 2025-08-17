@@ -6,6 +6,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 class OpenRouterProvider implements AIProvider {
   name = 'OpenRouter (Multiple Models)';
   private apiKey: string;
+  private fallbackApiKey?: string;
 
   constructor() {
     const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY;
@@ -13,10 +14,11 @@ class OpenRouterProvider implements AIProvider {
       throw new Error('OpenRouter API key not configured');
     }
     this.apiKey = apiKey;
+    this.fallbackApiKey = import.meta.env.VITE_OPENROUTER_API_KEY_2;
   }
 
   isConfigured(): boolean {
-    return !!import.meta.env.VITE_OPENROUTER_API_KEY;
+    return !!import.meta.env.VITE_OPENROUTER_API_KEY || !!import.meta.env.VITE_OPENROUTER_API_KEY_2;
   }
 
   async generateCode(prompt: string): Promise<GeneratedProject> {
@@ -65,72 +67,92 @@ Generate a complete MVC application with:
 Make the code production-ready with error handling, logging, and proper architecture.`;
 
     try {
-      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': window.location.origin,
-          'X-Title': 'PHPForge AI'
-        },
-        body: JSON.stringify({
-          model: 'anthropic/claude-3.5-sonnet',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: prompt }
-          ],
-          temperature: 0.7,
-          max_tokens: 4000
-        })
-      });
-
-      if (!response.ok) {
-        if (response.status === 402) {
-          throw new Error(`OpenRouter API error: 402 Payment Required - Your OpenRouter account has insufficient credits or requires payment. Please check your account at https://openrouter.ai/account`);
-        }
-        throw new Error(`OpenRouter API error: ${response.status} ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      const content = data.choices[0]?.message?.content;
-      
-      if (!content) {
-        throw new Error('No response from OpenRouter');
-      }
-
-      // Clean up the response to ensure it's valid JSON
-      let cleanContent = content.trim();
-      if (cleanContent.startsWith('```json')) {
-        cleanContent = cleanContent.replace(/```json\n?/, '').replace(/\n?```$/, '');
-      }
-      if (cleanContent.startsWith('```')) {
-        cleanContent = cleanContent.replace(/```\n?/, '').replace(/\n?```$/, '');
-      }
-
-      return JSON.parse(cleanContent);
+      const response = await this.makeOpenRouterRequest(prompt, systemPrompt, this.apiKey);
+      return await this.processResponse(response, prompt);
     } catch (error) {
       console.error('OpenRouter generation error:', error);
+      
+      // Try fallback key if available and primary key failed with 402
+      if (this.fallbackApiKey && error instanceof Error && error.message.includes('402')) {
+        console.log('Trying fallback API key...');
+        try {
+          const fallbackResponse = await this.makeOpenRouterRequest(prompt, systemPrompt, this.fallbackApiKey);
+          return await this.processResponse(fallbackResponse, prompt);
+        } catch (fallbackError) {
+          console.error('Fallback key also failed:', fallbackError);
+        }
+      }
+      
       return this.getFallbackProject(prompt);
     }
   }
 
+  private async makeOpenRouterRequest(prompt: string, systemPrompt: string, apiKey: string) {
+    return await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': window.location.origin,
+        'X-Title': 'PHPForge AI'
+      },
+      body: JSON.stringify({
+        model: 'deepseek/deepseek-r1',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.7,
+        max_tokens: 4000
+      })
+    });
+  }
+
+  private async processResponse(response: Response, prompt: string): Promise<GeneratedProject> {
+    if (!response.ok) {
+      if (response.status === 402) {
+        throw new Error(`OpenRouter API error: 402 Payment Required - Your OpenRouter account has insufficient credits or requires payment. Please check your account at https://openrouter.ai/account`);
+      }
+      throw new Error(`OpenRouter API error: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const content = data.choices[0]?.message?.content;
+    
+    if (!content) {
+      throw new Error('No response from OpenRouter');
+    }
+
+    // Clean up the response to ensure it's valid JSON
+    let cleanContent = content.trim();
+    if (cleanContent.startsWith('```json')) {
+      cleanContent = cleanContent.replace(/```json\n?/, '').replace(/\n?```$/, '');
+    }
+    if (cleanContent.startsWith('```')) {
+      cleanContent = cleanContent.replace(/```\n?/, '').replace(/\n?```$/, '');
+    }
+
+    return JSON.parse(cleanContent);
+  }
+
   private getFallbackProject(prompt: string): GeneratedProject {
     return {
-      description: `OpenRouter-generated PHP application based on: ${prompt}`,
+      description: `DeepSeek R1-generated PHP application based on: ${prompt}`,
       features: [
-        'MVC Architecture',
-        'Database Integration', 
-        'User Authentication',
-        'Responsive Design',
-        'Security Features',
-        'Admin Dashboard'
+        'Advanced MVC Architecture',
+        'Intelligent Database Design', 
+        'Enhanced Security Features',
+        'Modern Responsive UI',
+        'Optimized Performance',
+        'Smart Admin Dashboard'
       ],
       instructions: `1. Extract all files to your web server directory
 2. Create a MySQL database
 3. Import the database schema from database/schema.sql
 4. Configure database connection in config/database.php
-5. Set up proper file permissions
-6. Access the application through your web browser`,
+5. Set up proper file permissions (755 for directories, 644 for files)
+6. Configure your web server to point to the public directory
+7. Access the application through your web browser`,
       databaseSchema: [
         {
           name: 'users',
@@ -166,9 +188,14 @@ require_once '../config/database.php';
 require_once '../app/controllers/HomeController.php';
 require_once '../app/models/User.php';
 
-// Simple routing
+// Simple routing with enhanced security
 $request = $_SERVER['REQUEST_URI'];
 $path = parse_url($request, PHP_URL_PATH);
+
+// CSRF Protection
+if (!isset($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
 
 switch ($path) {
     case '/':
@@ -186,7 +213,7 @@ switch ($path) {
         break;
     default:
         http_response_code(404);
-        echo "Page not found";
+        include '../app/views/404.php';
         break;
 }
 ?>`
@@ -207,17 +234,185 @@ class Database {
         $this->conn = null;
         try {
             $this->conn = new PDO(
-                "mysql:host=" . $this->host . ";dbname=" . $this->db_name,
+                "mysql:host=" . $this->host . ";dbname=" . $this->db_name . ";charset=utf8mb4",
                 $this->username,
-                $this->password
+                $this->password,
+                [
+                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                    PDO::ATTR_EMULATE_PREPARES => false,
+                ]
             );
-            $this->conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         } catch(PDOException $exception) {
-            echo "Connection error: " . $exception->getMessage();
+            error_log("Connection error: " . $exception->getMessage());
+            throw new Exception("Database connection failed");
         }
         return $this->conn;
     }
 }
+?>`
+        }
+      ]
+    };
+  }
+}
+
+export interface AIProvider {
+  name: string;
+  generateCode: (prompt: string, context?: any) => Promise<GeneratedProject>;
+  isConfigured: () => boolean;
+}
+
+export interface GeneratedFile {
+  name: string;
+  path: string;
+  content: string;
+  type: 'php' | 'sql' | 'html' | 'css' | 'js' | 'json' | 'md' | 'txt';
+}
+
+export interface GeneratedProject {
+  files: GeneratedFile[];
+  description: string;
+  features: string[];
+  instructions: string;
+  databaseSchema: DatabaseTable[];
+}
+
+export interface DatabaseTable {
+  name: string;
+  fields: Array<{
+    name: string;
+    type: string;
+    nullable: boolean;
+    primary: boolean;
+    autoIncrement: boolean;
+    foreignKey?: string;
+  }>;
+}
+
+class OpenAIProvider implements AIProvider {
+  name = 'OpenAI GPT-4';
+  private client: OpenAI;
+
+  constructor() {
+    const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
+    if (!apiKey) {
+      throw new Error('OpenAI API key not configured');
+    }
+    this.client = new OpenAI({
+      apiKey,
+      dangerouslyAllowBrowser: true
+    });
+  }
+
+  isConfigured(): boolean {
+    return !!import.meta.env.VITE_OPENAI_API_KEY;
+  }
+
+  async generateCode(prompt: string): Promise<GeneratedProject> {
+    const systemPrompt = `You are an expert PHP/MySQL developer. Generate a complete, production-ready application based on the user's request.
+
+IMPORTANT: Respond with a valid JSON object containing:
+{
+  "description": "Brief description of the application",
+  "features": ["feature1", "feature2", ...],
+  "instructions": "Setup and installation instructions",
+  "databaseSchema": [
+    {
+      "name": "table_name",
+      "fields": [
+        {
+          "name": "field_name",
+          "type": "field_type",
+          "nullable": false,
+          "primary": true,
+          "autoIncrement": true,
+          "foreignKey": "referenced_table.field"
+        }
+      ]
+    }
+  ],
+  "files": [
+    {
+      "name": "filename.php",
+      "path": "directory/filename.php",
+      "content": "complete file content",
+      "type": "php"
+    }
+  ]
+}
+
+Generate a complete MVC application with:
+- Proper directory structure
+- Security best practices (prepared statements, input validation, CSRF protection)
+- Modern responsive design with Tailwind CSS
+- Complete CRUD operations
+- User authentication system
+- Database migrations
+- Configuration files
+- Documentation
+
+Make the code production-ready with error handling, logging, and proper architecture.`;
+
+    try {
+      const response = await this.client.chat.completions.create({
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': window.location.origin,
+          'X-Title': 'PHPForge AI'
+        },
+        body: JSON.stringify({
+          model: 'anthropic/claude-3.5-sonnet',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.7,
+          max_tokens: 4000
+        })
+      });
+
+      const content = response.choices[0]?.message?.content;
+      if (!content) {
+        throw new Error('No response from OpenAI');
+      }
+
+      return JSON.parse(content);
+    } catch (error) {
+      console.error('OpenAI generation error:', error);
+      return this.getFallbackProject(prompt);
+    }
+  }
+
+  private getFallbackProject(prompt: string): GeneratedProject {
+    return {
+      description: `Generated PHP application based on: ${prompt}`,
+      features: ['MVC Architecture', 'Database Integration', 'Responsive Design'],
+      instructions: 'Extract files and configure database connection in config/database.php',
+      databaseSchema: [
+        {
+          name: 'users',
+          fields: [
+            { name: 'id', type: 'INT', nullable: false, primary: true, autoIncrement: true },
+            { name: 'email', type: 'VARCHAR(255)', nullable: false, primary: false, autoIncrement: false },
+            { name: 'password', type: 'VARCHAR(255)', nullable: false, primary: false, autoIncrement: false },
+            { name: 'created_at', type: 'TIMESTAMP', nullable: false, primary: false, autoIncrement: false }
+          ]
+        }
+      ],
+      files: [
+        {
+          name: 'index.php',
+          path: 'public/index.php',
+          type: 'php',
+          content: `<?php
+require_once '../config/database.php';
+require_once '../app/controllers/HomeController.php';
+
+$controller = new HomeController();
+$controller->index();
 ?>`
         }
       ]
